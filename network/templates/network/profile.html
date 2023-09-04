@@ -1,0 +1,80 @@
+{% extends "network/layout.html" %} {% block body %}
+
+<div class="container">
+  <h2>{{ profile_user.username }}</h2>
+  <p id="followers-count">Followers: {{ profile_user.followers.count }}</p>
+  <p>Following: {{ profile_user.following.count }}</p>
+
+  <!-- Check profile -->
+{% if request.user != profile_user %}
+<form id="follow-form" method="post" action="{% url 'profile' profile_user.id %}">
+  {% csrf_token %}
+  <button id="follow-button" class="btn btn-sm {% if request.user.is_authenticated and request.user in profile_user.followers.all %}btn-danger{% else %}btn-outline-danger{% endif %}"
+   onclick="toggleFollowing({{ profile_user.id }})">
+    {% if request.user.is_authenticated and request.user in profile_user.followers.all %}
+      Unfollow
+    {% else %}
+      Follow
+    {% endif %}
+  </button>
+</form>
+{% endif %}
+  </button>
+
+  <hr />
+
+  <div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+      {% for post in posts %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <p>{{ post.content }}</p>
+          <p class="text-muted">
+            Posted on {{ post.timestamp }} by {{ post.author.username }}
+          </p>
+        </div>
+      </div>
+      {% empty %}
+      <p>No posts found.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+  function toggleFollowing(profileUserId) {
+    const followButton = document.getElementById('follow-button');
+    const followersCount = document.getElementById('followers-count');
+
+    // Update the button text and class
+    if (followButton.innerText === 'Follow') {
+      followButton.innerText = 'Unfollow';
+      followButton.classList.remove('btn-outline-danger');
+      followButton.classList.add('btn-danger');
+      followersCount.innerText = 'Followers: ' + (parseInt(followingCount.innerText.split(':')[1].trim()) + 1);
+    } else {
+      followButton.innerText = 'Follow';
+      followButton.classList.remove('btn-danger');
+      followButton.classList.add('btn-outline-danger');
+      followersCount.innerText = 'Followers: ' + (parseInt(followingCount.innerText.split(':')[1].trim()) - 1);
+    }
+
+    // Inform the backend about the following status change
+    fetch(`/profile/${profileUserId}/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token }}'
+      }
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Unable to toggle following status.');
+        }
+      })
+      .catch(error => console.error('Error:', error));
+  }
+</script>
+{% endblock %}

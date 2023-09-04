@@ -1,5 +1,284 @@
 {% extends "network/layout.html" %}
+{% load crispy_forms_tags %}
+ {% block body %}
+<div class="container">
+  {% if user.is_authenticated %}
+  <!-- Add a post -->
+  <div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+      <h2>New Post</h2>
+      <form method="post" id="new-post-form" action="{% url 'create_post' %}">
+        {% csrf_token %}
+        <div class="form-group">
+          <textarea
+            class="form-control"
+            name="content"
+            rows="4"
+            placeholder="Enter your post content"
+            required
+          ></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Submit</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
-{% block body %}
-    TODO
+  <!-- Display existing posts -->
+  <div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+
+      {% for post in posts %}
+        <div class="card mb-3">
+          <div class="card-body">
+            
+            <!-- Post information -->
+            <div id="post-{{ post.id }}" class="post">
+              <p>{{ post.content }}</p>
+            </div>
+            <p class="text-muted">
+              Posted by <strong><a href="{% url 'profile' post.author.id %}">{{ post.author.username }}</a></strong> on {{ post.timestamp }}
+            </p>
+
+            <!-- Like button -->
+            {% if user.is_authenticated and user == post.author %}
+            <div>
+              <button class="btn btn-sm btn-outline-primary like-button {% if request.user not in post.likes.all %} liked {% endif %}" data-post-id="{{ post.id }}">
+                {% if request.user not in post.likes.all %}
+                Like
+                {% else %}
+                Unlike
+                {% endif %}
+              </button>
+              <!-- Like count -->
+              <span id="like-count-{{ post.id }}">{{ post.likes.count }}</span>
+            </div>
+
+            <!-- Edit button -->
+            <button class="btn btn-sm btn-outline-primary edit-post-btn" data-post-id="{{ post.id }}">Edit</button>
+            {% endif %}
+
+          </div>
+        </div>
+
+        {% empty %}
+        <p>No posts found.</p>
+        {% endfor %}
+    </div>
+  </div>
+
+  <!-- Add pagination buttons -->
+  <div class="pagination">
+    {% if posts.has_previous %}
+      <a href="?page=1">First</a>
+      <a href="?page={{ posts.previous_page_number }}">Previous</a>
+    {% endif %}
+
+    {% if posts.has_next %}
+      <a href="?page={{ posts.next_page_number }}">Next</a>
+      <a href="?page={{ posts.paginator.num_pages }}">Last</a>
+    {% endif %}
+  </div>  
+</div>  
+</div>
+
+
+<script>
+// LIKE BUTTON-----------------------------------------
+  const likeButtons = document.querySelectorAll('.like-button');
+  likeButtons.forEach(button => {
+    button.addEventListener('click', handleLike);
+  })
+
+  function handleLike(event) {
+    const postId = event.target.dataset.postId;
+    const likeButton = document.querySelector(`[data-post-id="${postId}"]`); 
+    const likeCountElement = document.querySelector(`#like-count-${postId}`);
+    const likeCount = parseInt(likeCountElement.textContent);
+    
+    const isLiked = event.target.classList.contains('liked');
+    const action = (!isLiked) ? 'unlike' : 'like';
+
+    event.target.classList.toggle('liked')
+
+    fetch(`like-post/${postId}/${action}/`, {
+      method: 'POST',
+    }).then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+          if (!isLiked) {
+            likeCountElement.textContent = likeCount - 1;
+            likeButton.textContent = 'Like';
+          } else {
+            likeCountElement.textContent = likeCount + 1;
+            likeButton.textContent = 'Unlike';
+          }
+        }
+      }).catch(error => {
+        console.log('Fetch error: ', error);
+      });
+          
+  }
+  
+// COMMENT BUTTON-----------------------------------------   
+  const commentButtons = document.querySelectorAll('.btn.btn-primary.btn-sm');
+  commentButtons.forEach(button => {
+    button.addEventListener('click', handleCommentForm);
+  })  
+
+  function handleCommentForm(event) {
+    event.preventDefault(); // Prevent default button behavior
+    
+    const postId = event.target.dataset.postId;
+
+    // Create comment form
+    const form = document.createElement("form");
+    form.className = 'comment-form';
+    form.action = `/comment/${postId}/create/`;
+    form.method = 'post';
+    form.addEventListener('submit', saveCommentForm);
+
+    // Csrf token
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrfmiddlewaretoken';
+    csrfInput.value = csrfToken;
+    form.appendChild(csrfInput);
+
+    // Create textarea
+    const textarea = document.createElement('textarea');
+    textarea.className = 'form-control';
+    textarea.name = 'content';
+    textarea.placeholder = 'Enter your comment';
+    form.appendChild(textarea);
+
+    // Submit button
+    const submitButton = document.createElement('button');
+    submitButton.className = 'btn btn-sm btn-primary';
+    submitButton.type = 'submit';
+    submitButton.innerText = 'Submit';
+    form.appendChild(submitButton);
+
+    // Append the comment form to the DOM
+    const commentFormSection = document.querySelector('.comment-form-section');
+    commentFormSection.innerHTML = ''; // Clear any existing content
+    commentFormSection.appendChild(form);
+  }  
+
+  function saveCommentForm(postId, content) {
+    // Send the form data to the server using fetch API
+      fetch(`/comment/${postId}/create/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCSRFToken() // Custom function to get CSRF token  
+        },
+        body: JSON.stringify({ content })
+      })  
+        .then(response => {
+          if (response.ok) {
+            // Comment created successfully, you can perform any necessary actions here
+            console.log('Comment created!');
+          } else {
+            // Handle errors if needed
+            console.error('Failed to create comment');
+          }
+        })
+        .catch(error => {
+          console.error('Failed to create comment:', error);
+        });  
+  }      
+
+// EDIT BUTTON-----------------------------------------  
+  const editButtons = document.querySelectorAll('.edit-post-btn');
+  editButtons.forEach((button) => {
+    button.addEventListener('click', handleEditPost);
+  });  
+
+  function handleEditPost(event) {
+    const postId = event.target.dataset.postId;
+    const postContent = document.querySelector(`#post-${postId}`);
+    const postText = postContent.querySelector('p').innerText;
+
+    // Replace post content with a textarea for editing
+    const textarea = document.createElement('textarea');
+    textarea.className = 'form-control';
+    textarea.value = postText;
+    postContent.innerHTML = '';
+    postContent.appendChild(textarea);
+
+    // Create a "Save" button for the edited post
+    const saveButton = document.createElement('button');
+    saveButton.className = 'btn btn-sm btn-primary save-post-btn';
+    saveButton.innerText = 'Save';
+    postContent.appendChild(saveButton);
+
+    // Attach event listener to the "Save" button
+    saveButton.addEventListener('click', () => {
+      const editedContent = textarea.value;
+      saveEditedPost(postId, editedContent);
+    });  
+  }  
+
+  function saveEditedPost(postId, editedContent) {
+    if (!editedContent) {
+      console.log('Error: Content cannot be empty.');
+      return;
+    }
+
+    fetch(`/edit-post/${postId}/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token }}',
+      },
+      body: JSON.stringify({content: editedContent}), // Send the updated content in the request body
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.status === 'success') {
+          const postContent = document.querySelector(`#post-${postId}`);
+          postContent.innerHTML = `<p>${data.content}</p>`;
+
+        } else {
+          console.log('Error:', data.message);
+        }
+      })
+      .catch((error) => {
+        console.log('Error:', error);
+      });
+}
+</script>
+
+
+<style>
+  .pagination {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 30px;
+  }
+
+  .pagination a {
+    display: inline-block;
+    padding: 5px 10px;
+    margin: 0 5px;
+    border: 1px solid blue;
+    color: blue;
+    text-decoration: none;
+  }
+
+  .pagination a:hover {
+    background-color: blue;
+    color: white;
+  }
+
+  .current-page {
+    margin: 0 10px;
+    font-weight: bold;
+  }
+</style>
+
 {% endblock %}
