@@ -1,1 +1,1 @@
-web: gunicorn search_engine.wsgi
+web: gunicorn network.wsgi
